@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.Windows.Forms;
 using Demos.BookManagement.Domain;
 using Demos.BookManagement.IRepository;
+using ClosedXML.Excel;
+using System.Data;
+using System.IO;
+using System.Linq;
 
 namespace Demos.BookManagement.Winforms
 {
@@ -23,7 +27,7 @@ namespace Demos.BookManagement.Winforms
         /// <summary>
         /// 删除错误提示
         /// </summary>
-        private const string RemoveErrorMessage= @"请先选择图书";
+        private const string RemoveErrorMessage = @"请先选择图书";
 
         #endregion
 
@@ -120,6 +124,117 @@ namespace Demos.BookManagement.Winforms
             ShowBook(new Book());
         }
 
+        /// <summary>
+        /// 从 Excel 文件导入图书数据到数据库
+        /// </summary>
+        /// <summary>
+        /// 从 Excel 文件导入图书数据到数据库
+        /// </summary>
+        private void ImportBooksFromExcel()
+        {
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "Excel 文件 (*.xlsx)|*.xlsx";
+            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    using (var workbook = new XLWorkbook(openFileDialog.FileName))
+                    {
+                        var worksheet = workbook.Worksheet(1);
+                        var dataTable = new DataTable();
+
+                        // 获取表头
+                        var firstRow = worksheet.FirstRowUsed();
+                        foreach (var cell in firstRow.Cells())
+                        {
+                            dataTable.Columns.Add(cell.Value.ToString());
+                        }
+
+                        // 获取数据行
+                        foreach (var row in worksheet.RowsUsed().Skip(1))
+                        {
+                            var newRow = dataTable.NewRow();
+                            for (int i = 0; i < dataTable.Columns.Count; i++)
+                            {
+                                newRow[i] = row.Cell(i + 1).Value.ToString();
+                            }
+                            dataTable.Rows.Add(newRow);
+                        }
+
+                        // 将数据写入数据库
+                        foreach (DataRow row in dataTable.Rows)
+                        {
+                            var book = new Book
+                            {
+                                Title = row["书名"].ToString(),
+                                Author = row["作者"].ToString(),
+                                Press = row["出版社"].ToString(),
+                                Isbn = row["ISBN"].ToString(),
+                                // 将 row["Price"] 转换为 string 类型
+                                Price = ConvertToDouble(row["定价"].ToString())
+                            };
+                            Repository.Add(book);
+                        }
+
+                        MessageBox.Show("数据导入成功！");
+                        LoadBook(); // 重新加载图书列表
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"导入数据时出错：{ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 将图书数据导出到 Excel 文件
+        /// </summary>
+        private void ExportBooksToExcel()
+        {
+            SaveFileDialog saveFileDialog = new SaveFileDialog();
+            saveFileDialog.Filter = "Excel 文件 (*.xlsx)|*.xlsx";
+            if (saveFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                try
+                {
+                    var books = Repository.FindAll();
+                    using (var workbook = new XLWorkbook())
+                    {
+                        var worksheet = workbook.Worksheets.Add("图书列表");
+
+                        // 添加表头
+                        worksheet.Cell(1, 1).Value = "编号";
+                        worksheet.Cell(1, 2).Value = "书名";
+                        worksheet.Cell(1, 3).Value = "作者";
+                        worksheet.Cell(1, 4).Value = "出版社";
+                        worksheet.Cell(1, 5).Value = "ISBN";
+                        worksheet.Cell(1, 6).Value = "定价";
+
+                        // 添加数据行
+                        for (int i = 0; i < books.Count; i++)
+                        {
+                            var book = books[i];
+                            worksheet.Cell(i + 2, 1).Value = book.Id;
+                            worksheet.Cell(i + 2, 2).Value = book.Title;
+                            worksheet.Cell(i + 2, 3).Value = book.Author;
+                            worksheet.Cell(i + 2, 4).Value = book.Press;
+                            worksheet.Cell(i + 2, 5).Value = book.Isbn;
+                            worksheet.Cell(i + 2, 6).Value = book.Price;
+                        }
+
+                        // 保存文件
+                        workbook.SaveAs(saveFileDialog.FileName);
+                        MessageBox.Show("数据导出成功！");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"导出数据时出错：{ex.Message}");
+                }
+            }
+        }
+
         #endregion
 
         #region 事件处理
@@ -201,11 +316,40 @@ namespace Demos.BookManagement.Winforms
         /// <param name="e"></param>
         private void dgv_Result_CellClick(object sender, DataGridViewCellEventArgs e)
         {
-            var book = dgv_Result.CurrentRow == null ? new Book() : (Book) dgv_Result.CurrentRow.DataBoundItem;
+            var book = dgv_Result.CurrentRow == null ? new Book() : (Book)dgv_Result.CurrentRow.DataBoundItem;
             ShowBook(book);
+        }
+
+        /// <summary>
+        /// 导入 Excel 按钮点击事件
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void btn_Import_Click(object sender, EventArgs e)
+        {
+            ImportBooksFromExcel();
+        }
+
+        /// <summary>
+        /// 导出 Excel 按钮点击事件
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void btn_Export_Click(object sender, EventArgs e)
+        {
+            ExportBooksToExcel();
         }
 
         #endregion
 
+        private void groupBox1_Enter(object sender, EventArgs e)
+        {
+
+        }
+
+        private void txt_Isbn_TextChanged(object sender, EventArgs e)
+        {
+
+        }
     }
 }
